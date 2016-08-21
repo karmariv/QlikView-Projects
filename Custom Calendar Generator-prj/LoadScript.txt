@@ -1,0 +1,388 @@
+﻿///$tab Define Variables
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$#,##0.00;($#,##0.00)';
+SET TimeFormat='hh:mm:ss TT';
+SET DateFormat='DD/MM/YYYY';
+SET TimestampFormat='DD/MM/YYYY hh:mm:ss[.fff] TT';
+SET MonthNames='Jan;Feb;Mar;Abr;May;Jun;Jul;Ago;Sep;Oct;Nov;Dec';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+
+//Initialize internal variables
+LET vHolidayCalendar = FileSize('Holidays.qvd');
+
+//Clean variables used to display messages
+SET vMsgBoxError = '';
+SET vMsgBoxError2 = '';
+SET vMsgBox = '';
+SET vMsgBox2 = '';
+
+
+///$tab Add Holidays
+SUB addHoliday(arg)
+	/*if QVD stixts add new records, otherwise create QVD
+	with the new record*/
+	IF '$(vHolidayCalendar)' > 0 THEN 
+	
+		TRACE 'Adding holiday to existing list';
+		
+		//Load all holidays stored previusly
+		Holidays:
+		LOAD
+			[Holiday ID], 
+			[Holiday Name], 
+		    [Fixed Holiday], 
+		    Month, 
+		    [Day of Week], 
+		    [Week of Month], 
+		    [Day of Month]
+		FROM
+		[Holidays.qvd](qvd);
+		
+		//Check that new holiday has not been stored before
+		CheckDuplicates:
+		LOAD
+			[Holiday ID]
+		Resident Holidays
+		Where Match([Holiday Name], '$(vHolidayName)') > 0;
+		
+		LET vTotalDuplicatedRecords = NoOfRows('CheckDuplicates');
+		TRACE 'Checking that holiday doesn´t exists in current list. Total records with the same name found: '$(vTotalDuplicatedRecords);
+		
+		//Only store new holiday if it doesn't exist yet
+		IF $(vTotalDuplicatedRecords) >= 1 THEN
+			TRACE 'More than one records with the name $(vHolidayName) found. Throwing message and ending reload';
+			SET vMsgBoxError = '$(vHolidayName) already exists. Holiday name must be unique.';
+		
+		ELSE
+			
+			//Get the max ID
+			LET vTotalHolidays = NoOfRows('Holidays');
+			
+			Holidays:
+			LOAD
+				$(vTotalHolidays) + 1 as [Holiday ID],
+				'$(vHolidayName)' as [Holiday Name],
+				'$(vFixedHoliday)' as [Fixed Holiday],
+				'$(vMonth)' as Month,
+				If('$(vFixedHoliday)' = 'No', '$(vDayOfWeek)', '') as [Day of Week],
+				If('$(vFixedHoliday)' = 'No', '$(vWeekOfMonth)', '') as [Week of Month],
+				If('$(vFixedHoliday)' = 'Yes', '$(vDayOfMonth)', '')  as [Day of Month]
+			AutoGenerate (1);
+			
+			TRACE 'New record added';
+			SET vMsgBox = 'Holiday $(vHolidayName) has been added to the list.';
+			
+			STORE Holidays into Holidays.qvd(qvd);
+			
+		ENDIF
+		
+		//Drop tables
+		DROP Table Holidays;
+	
+	ELSE
+		Holidays:
+		LOAD
+			1 as [Holiday ID],
+			'$(vHolidayName)' as [Holiday Name],
+			'$(vFixedHoliday)' as [Fixed Holiday],
+			'$(vMonth)' as Month,
+			If('$(vFixedHoliday)' = 'No', '$(vDayOfWeek)', '') as [Day of Week],
+			If('$(vFixedHoliday)' = 'No', '$(vWeekOfMonth)', '') as [Week of Month],
+			If('$(vFixedHoliday)' = 'Yes', '$(vDayOfMonth)', '')  as [Day of Month]
+		AutoGenerate (1);
+		
+		//Set message 
+		TRACE 'New record added';
+		SET vMsgBox = 'Holiday $(vHolidayName) has been added to the list.';
+	
+		//Store new record
+		STORE Holidays into Holidays.qvd(qvd);
+		DROP Table Holidays;
+	
+	ENDIF
+
+ENDSUB
+
+///$tab Update Holiday
+SUB updateHoliday(arg)
+	
+	TRACE Updating record '$(vHolidayID)';
+	
+	//Load all Holidays except the one to be updated
+	Holidays:
+	LOAD
+		[Holiday ID], 
+		[Holiday Name], 
+	     [Fixed Holiday], 
+	     Month, 
+	     [Day of Week], 
+	     [Week of Month], 
+	     [Day of Month]
+	FROM
+	[Holidays.qvd](qvd)
+	Where Match([Holiday ID], '$(vHolidayID)') = 0;
+	
+	Concatenate
+	
+	LOAD
+		'$(vHolidayID)' as [Holiday ID],
+		'$(vHolidayName)' as [Holiday Name],
+		'$(vFixedHoliday)' as [Fixed Holiday],
+		'$(vMonth)' as Month,
+		If('$(vFixedHoliday)' = 'No', '$(vDayOfWeek)', '') as [Day of Week],
+		If('$(vFixedHoliday)' = 'No', '$(vWeekOfMonth)', '') as [Week of Month],
+		If('$(vFixedHoliday)' = 'Yes', '$(vDayOfMonth)', '')  as [Day of Month]
+	AutoGenerate (1);
+
+	STORE Holidays into Holidays.qvd(qvd);
+
+	SET vMsgBox = '$(vHolidayName) has been updated';
+	
+	DROP Table Holidays;
+ENDSUB
+///$tab Delete Holiday
+SUB deleteHoliday(arg)
+
+	TRACE Removing record '$(vHolidayID)'...;
+	
+	//Load all Holidays except the one to be removed
+	Holidays:
+	LOAD
+		[Holiday ID], 
+		[Holiday Name], 
+	     [Fixed Holiday], 
+	     Month, 
+	     [Day of Week], 
+	     [Week of Month], 
+	     [Day of Month]
+	FROM
+	[Holidays.qvd](qvd)
+	Where Match([Holiday ID], '$(vHolidayID)') = 0;
+	
+	STORE Holidays into Holidays.qvd(qvd);
+
+	SET vMsgBox = '$(vHolidayName) has been removed from list';
+	
+	//Cleaning variables to avoid issues and allow user add
+	//or edit new items
+	SET vUpdateRecord = 0;  
+	SET vHolidayID = 0; 
+	SET vHolidayName = '';    
+	
+	DROP Table Holidays;
+
+END SUB
+///$tab Generate Calendar
+SUB generateCalendar(arg)
+	/************************************************************
+	* Calculate Calendar based on start and end years
+	*************************************************************/
+	LET vMinDate = num(Date#('01-01-'&$(vMinYear),'DD-MM-YYYY'));
+	LET vMaxDate = num(Date#('31-12-'&$(vMaxYear),'DD-MM-YYYY'));
+	
+	CalendarBase:
+	LOAD
+		*,
+		Year&'-'&Month&'-'&[Day of Week]&'-'&[Weekday in Month] as %WeekdayInMonthKey, //In case we add holidays
+		Ceil((If(([Day of Week] + 1 - [Day of Month Offset]) < 0, 7 + [Day of Week] + 1 - [Day of Month Offset], [Day of Week] + 1 - [Day of Month Offset]) + [Day of Month]) / 7) as [Week of Month];
+	LOAD
+		TempDate as [Date Key],
+		Date(TempDate) as Date,
+		num(WeekDay(TempDate)) as [Day of Week],
+		WeekDay(TempDate) as [Day of Week Name],
+		Day(TempDate) as [Day of Month],
+		Week(TempDate) as Week,
+		Num(Month(TempDate)) as Month,
+		Date(TempDate, 'MMMM') as [Month Name],
+		Month(TempDate) as [Month Short Name],
+		Year(TempDate) as Year,
+		Month(TempDate)&'-'&Year(TempDate) as [Month-Year],
+		'Q'&Ceil(Month(TempDate) / 3) as Quarter,
+		'Q'&Ceil(Month(TempDate) / 3)&'-'&Year(TempDate) as [Quarter-Year],
+		If(Match(WeekDay(TempDate), 'Sat','Sun') = 0, 0, 1) as isWeekendFlag,
+		If(Mod(Day(TempDate), 7) = 0, 7, Mod(Day(TempDate), 7)) as [Day of Month Offset],
+		Ceil(Day(TempDate)/7) as [Weekday in Month];
+	LOAD
+		$(vMinDate) + IterNo() - 1 as TempDate
+	Autogenerate 1 While ($(vMinDate) + IterNo() - 1) <= $(vMaxDate); 
+	
+		
+	/************************************************************
+	* Adding Holidays
+	*
+	* If a QVD with Holidays exists then try to add the holidays
+	* to the current calendar
+	*************************************************************/
+	IF '$(vHolidayCalendar)' > 0 THEN 
+		
+		//-------------------------------------------------------
+		/*First we need to identify the last weekdays for each month
+		  remember that some non fixed holiday occured during the last 
+		  days of the month for instance Memorial day in US*/
+		
+		MaxWeekDaysCalendar:
+		LOAD
+			Year&'-'&Month&'-'&[Day of Week]&'-'&[Max Day] as %WeekdayInMonthKey,
+			'Last' as _WeekdayInMonthFlag;
+		LOAD
+			Year,
+			Month,
+			[Day of Week],
+			Max([Weekday in Month]) as [Max Day]
+		Resident CalendarBase
+		Group By Year, Month, [Day of Week];
+		
+		Left Join(CalendarBase)
+		LOAD
+			*
+		Resident MaxWeekDaysCalendar;
+		
+		//Generate temporal keys
+		NoConcatenate
+		CalendarBaseTmp:
+		LOAD
+			*,
+			[Month Name]&'-'&[Day of Month] as %fixedHolidayKey,
+			[Month Name]&'-'&[Day of Week Name]&'-'&[Weekday in Month] as %nonFixedHolidayKey,
+			[Month Name]&'-'&[Day of Week Name]&'-'&[Weekday in Month Tmp] as %nonFixedLDMHolidayKey; //LDM --> Last day of month
+		LOAD 
+			*,
+			If(isNull(_WeekdayInMonthFlag), [Weekday in Month], _WeekdayInMonthFlag) as [Weekday in Month Tmp]
+		Resident CalendarBase;
+		
+		DROP Table CalendarBase, MaxWeekDaysCalendar;
+		
+		//-----------------------------------------------------------------------------
+		/*From here, load calendar. We will do three joins
+		  one for the fixed holidays, the second one for the non fixed holiday and
+		  the last one is for those holidays on the last weekday of a month*/
+		Holidays:
+		LOAD
+			*
+		FROM
+			[Holidays.qvd](qvd);
+			
+		Left Join(CalendarBaseTmp)
+		LOAD
+			[Holiday Name] as [Fixed Holiday Name],
+			Month&'-'&[Day of Month] as %fixedHolidayKey
+		Resident Holidays;
+		
+		Left Join(CalendarBaseTmp)
+		LOAD
+			[Holiday Name] as [Non Fixed Holiday Name],
+			Month&'-'&[Day of Week]&'-'&[Week of Month] as %nonFixedHolidayKey
+		Resident Holidays;
+		
+		Left Join(CalendarBaseTmp)
+		LOAD
+			[Holiday Name] as [Non Fixed LDM Holiday Name],
+			Month&'-'&[Day of Week]&'-'&[Week of Month] as %nonFixedLDMHolidayKey
+		Resident Holidays;
+		  
+		//---------------------------------------------------------------------
+		/* Finally, leave all holidays in one column, if there´s no holiday 
+		   N/A will be the default value */
+		NoConcatenate 
+		CalendarBase:
+		LOAD
+			*,
+			If(IsNull([Fixed Holiday Name]), If(IsNull([Non Fixed Holiday Name]), If(isnull([Non Fixed LDM Holiday Name]), 'N/A', [Non Fixed LDM Holiday Name]), [Non Fixed Holiday Name]), [Fixed Holiday Name]) as [Holiday Name],
+			If(IsNull([Fixed Holiday Name]) = 0 or IsNull([Non Fixed Holiday Name]) = 0 or isnull([Non Fixed LDM Holiday Name]) = 0, 1, 0) as _isHolidayFlag
+		Resident CalendarBaseTmp;
+		
+		DROP Table CalendarBaseTmp, Holidays;
+		DROP Fields _WeekdayInMonthFlag, [Weekday in Month Tmp], %WeekdayInMonthKey, %fixedHolidayKey, %nonFixedHolidayKey, %nonFixedLDMHolidayKey, [Fixed Holiday Name], [Non Fixed Holiday Name], [Non Fixed LDM Holiday Name];
+		  
+	ENDIF
+	
+	/************************************************************
+	* Finally, lets add the fiscal calendar values
+	*************************************************************/
+	LET vFiscalMonthStart = num(Month(Date#('01-$(vFiscalYearStart)-'&Year(Today()), 'DD-MMMM-YYYY')));
+	
+	NoConcatenate 
+	Calendar:
+	LOAD
+		*,
+		If(Date = Date#('01-$(vFiscalYearStart)-'&Year(Date), 'DD-MMMM-YYYY'), 1, 0) as _fiscalYearStart,
+		If(Month >= $(vFiscalMonthStart), Month - $(vFiscalMonthStart) + 1, Month - $(vFiscalMonthStart) + 13) as [Fiscal Month],
+		Ceil(If(Month >= $(vFiscalMonthStart), Month - $(vFiscalMonthStart) + 1, Month - $(vFiscalMonthStart) + 13) / 3) as [Fiscal Quarter],
+		If(IsNull(Peek([Fiscal Year])), Year, If(Month = $(vFiscalMonthStart), Year + 1, Peek([Fiscal Year]))) as [Fiscal Year]
+		//If(Date = Date#('01-$(vFiscalYearStart)-'&Year(Date), 'DD-MMMM-YYYY'), Year(Date) + 1, If(isNull(Peek([Fiscal Year])), Year(Date) + 1, Peek([Fiscal Year]))) as [Fiscal Year]
+	Resident CalendarBase
+	Order by [Date Key];
+		
+	STORE Calendar into '$(vCalendarPath)'\Calendar.qvd(qvd);	
+		
+	DROP Tables CalendarBase;
+	
+	//Set notification message
+	SET vMsgBox2 = 'Calendar has been successfully generated';
+ENDSUB
+///$tab Main
+/****************************************************************
+* When apaplication reloads, variables set by button actions are
+* evaluated and based on the action made by the user the appropriate
+* subroutine is called
+*****************************************************************/
+
+TRACE 'Checking if Holidays.qvd exists';
+TRACE 'Holiday.qvd size: '$(vHolidayCalendar);
+
+IF '$(vGenerateCalendar)' = 1 THEN
+	//Perform some validations before calling the subroutine
+	IF Len('$(vMinYear)') = 4 and Len('$(vMaxYear)') = 4 THEN
+		IF Len('$(vCalendarPath)') > 0 and FileTime('$(vCalendarPath)') > 0 THEN
+		
+			CALL generateCalendar('');
+		
+		ELSE
+			LET vMsgBoxError2 = chr(34) & '$(vCalendarPath)' & chr(34) & ' is not a valid path';
+		ENDIF		
+	ELSE
+		SET vMsgBoxError2 = 'Start and End years must be in YYYY format';
+	ENDIF
+
+	//Reset variable to avoid getting in every reload
+	LET vGenerateCalendar = 0;
+	
+ELSE
+	//Validate Holiday name before to continue
+	IF Len('$(vHolidayName)') = 0 THEN
+		SET vMsgBoxError = 'Holiday Name cannot be empty';
+	ELSE	
+		IF '$(vUpdateRecord)' = 0 THEN
+			CALL addHoliday('');
+
+		ELSEIF '$(vHolidayCalendar)' > 0 and '$(vUpdateRecord)' = 1 and '$(vHolidayID)' > 0 THEN
+			CALL updateHoliday('');
+			
+		ELSEIF '$(vHolidayCalendar)' > 0 and '$(vUpdateRecord)' = 2 and '$(vHolidayID)' > 0 THEN
+			CALL deleteHoliday('');
+		ENDIF
+	ENDIF
+ENDIF
+
+//Load list of holidays
+LET vHolidayCalendar = FileSize('Holidays.qvd'); //Check size of QVD again
+If '$(vHolidayCalendar)' > 0 THEN
+	QUALIFY '*';
+	
+	Holidays:
+	LOAD
+		*
+	From [Holidays.qvd](qvd);
+
+ENDIF
+
+EXIT SCRIPT;
